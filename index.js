@@ -1,138 +1,135 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const app = express();
-const mysql = require("mysql");
 const path = require("path");
 const cors = require("cors");
 const fs = require("fs");
-const zip = require('express-easy-zip');
 
+const variables = {
+	vaccinationDate: "06/01/2021",
+	lastUpdatedTime: "30th May 2021 - 1 pm",
+	gap: { Covaxin: 28, Covishield: 84, recovery: 84 },
+};
+
+const dataList = { json: {} };
+
+//app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use(bodyParser.json());
-app.use(zip());
 
-var allowedOrigins = ["http://localhost:3001", "http://yourapp.com"];
+app.use(cors());
 
-app.use(
-	cors({
-		origin: function (origin, callback) {
-			// allow requests with no origin
-			// (like mobile apps or curl requests)
-			if (!origin) return callback(null, true);
-			if (allowedOrigins.indexOf(origin) === -1) {
-				var msg =
-					"The CORS policy for this site does not " +
-					"allow access from the specified Origin.";
-				return callback(new Error(msg), false);
-			}
-			return callback(null, true);
-		},
-	})
-);
-app.use("/media", express.static(__dirname + "/media"));
+app.use("/server/data", express.static(__dirname + "/data"));
 
-const conn = mysql.createConnection({
-	host: "localhost",
-	user: "root",
-	password: "yourpasswd",
-	database: "homeListing",
-});
+let currDir = "";
 
-conn.connect((err) => {
-	if (err) throw err;
-	console.log("Mysql Connected");
-});
+function readJsonFileSync(filepath, encoding) {
+	if (typeof encoding == "undefined") {
+		encoding = "utf8";
+	}
+	var file = fs.readFileSync(filepath, encoding);
+	return JSON.parse(file);
+}
 
-app.get("/api/listings", (req, res) => {
-	let sql = "select * from listings";
-	let query = conn.query(sql, (err, results) => {
-		if (err) throw err;
-		res.send(JSON.stringify({ status: 200, error: null, data: results }));
-	});
-});
+function readAndManipulate(file) {
+	var filepath = __dirname + "/" + file;
+	let data = readJsonFileSync(filepath);
 
-app.get("/api/listingVideos/:listId", (req, res) => {
-	let sql =
-		"select * from media where listingid=" +
-		req.params.listId +
-		" and mediatype='video'";
-	let query = conn.query(sql, (err, results) => {
-		if (err) throw err;
-		res.send(JSON.stringify({ status: 200, error: null, data: results }));
-	});
-});
-
-app.get("/api/listingPhotos/:listId", (req, res) => {
-	//joining path of directory
-	const mediaPath = "media";
-	const listId = req.params.listId;
-	const dynamicPath = listId + "/photos";
-	const directoryPath = path.join(__dirname, mediaPath, dynamicPath);
-
-	//passsing directoryPath and callback function
-	fs.readdir(directoryPath, function (err, files) {
-		//handling error
-		if (err) {
-			return console.log("Unable to scan directory: " + err);
+	const dataJson = data.map((item) => {
+		let eligible = false;
+		if (item.Aaadhar.trim() === "") {
+			item.Aaadhar = "Not Entered";
+		} else {
+			item.Aaadhar = "Entered";
 		}
 
-		fileData = [];
-		//listing all files using forEach
-		let ctr = 0;
-		files.forEach(function (file) {
-			// Do whatever you want to do with the file
-			ctr++;
-			let id = req.params.listId + "_" + ctr;
-			let picFile =
-				req.protocol +
-				"://" +
-				req.get("host") +
-				"/media/" +
-				dynamicPath +
-				"/" +
-				file;
-			fileData.push({ key: id, img: picFile });
-		});
-		res.send(JSON.stringify({ status: 200, error: null, data: fileData }));
+		if (item.Age.trim() === "") {
+			item.Age = "Not Entered";
+		} else {
+			item.Age = "Entered";
+		}
+
+		if (item["Mobile#"].trim() === "") {
+			item["Mobile#"] = "Not Entered";
+		} else {
+			item["Mobile#"] = "Entered";
+		}
+		if (item.whichDose == "2nd") {
+			const diffTime =
+				new Date(variables.vaccinationDate) - new Date(item["1stDoseDate"]);
+			item["DaysSince1stDose"] = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+		}
+
+		if (
+			parseInt(item.DaysSinceRecovery, 10) === 0 ||
+			(parseInt(item.DaysSinceRecovery, 10) > 0 &&
+				parseInt(item.DaysSinceRecovery, 10) >= variables.gap.recovery)
+		) {
+			if (item.WhichDose == "2nd") {
+				if (item["DaysSince1stDose"] >= variables.gap[item.Vaccine]) {
+					eligible = true;
+				}
+			} else {
+				eligible = true;
+			}
+		}
+		const obj = {
+			Apartment: item.Apartment,
+			Name: item.Name,
+			Age: item.Age,
+			Aaadhar: item.Aaadhar,
+			"Mobile#": item["Mobile#"],
+			WhichDose: item.WhichDose,
+			"1stDoseDate": item["1stDoseDate"],
+			DaysSince1stDose: item["DaysSince1stDose"],
+			Vaccine: item.Vaccine,
+			eligible: eligible ? "Eligible" : "Not Eligible",
+		};
+		return obj;
 	});
+	return dataJson;
+}
+
+function refresh() {
+	dataList.json = readAndManipulate("data/data.json");
+}
+
+function returnData() {
+	return dataList.json;
+}
+
+app.get(currDir + "/", (req, res) => {
+	res.send(
+		JSON.stringify({
+			status: 200,
+			error: null,
+			data: "Site is working fine",
+		})
+	);
+});
+app.get(currDir + "/api/details/:flatnum/", (req, res) => {
+	const flatnum = req.params.flatnum;
+
+	const dataList = returnData();
+
+	const aptFound = dataList.filter((member) => {
+		return member.Apartment.toUpperCase() === flatnum;
+	});
+
+	res.send(
+		JSON.stringify({
+			status: 200,
+			error: null,
+			parameters: {
+				vaccinationDate: variables.vaccinationDate,
+				lastUpdatedTime: variables.lastUpdatedTime,
+			},
+			data: aptFound,
+		})
+	);
 });
 
-app.get("/api/downloadPhotos/:listId", (req, res) => {
-	//joining path of directory
-    const mediaPath = "media";
-    const outputDir="uploads"
-	const listId = req.params.listId;
-    const dynamicPath = listId + "/photos";
-    const zipFileName=listId + "_photos.zip";
-    const directoryPath = path.join(__dirname, mediaPath, dynamicPath);
-    const zipdirPath = path.join(__dirname, mediaPath,listId);
-    
-
-
-    res.zip({
-        files: [
-            { path: mediaPath + "/" + dynamicPath, name: outputDir +"/"+listId+"_photos.zip" }    
-        ],
-        
-          filename: zipFileName
-    
-     }).then(function(obj){
-        var zipFileSizeInBytes = obj.size;
-        var ignoredFileArray = obj.ignored;
-        console.log(obj)
-    })
-    .catch(function(err){
-        console.log(err);	//if zip failed
-    });
-     /*
-     .then((dataFile)=>{
-        console.log(dataFile);
-        res.download(zipFileName;
-    });*/
-
-});
-
-
+refresh();
 app.listen(3000, () => {
 	console.log("Server started on port 3000");
 });

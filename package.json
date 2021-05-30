@@ -1,5 +1,5 @@
 {
-  "name": "homelisting-server",
+  "name": "ggvax-server",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -13,8 +13,7 @@
     "body-parser": "^1.19.0",
     "cors": "^2.8.5",
     "express": "^4.17.1",
-    "express-easy-zip": "^1.1.5",
-    "mysql": "^2.18.1",
+    "lodash": "^4.17.21",
     "rn-fetch-blob": "^0.12.0"
   }
 }
