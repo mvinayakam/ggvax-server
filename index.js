@@ -4,10 +4,17 @@ const app = express();
 const path = require("path");
 const cors = require("cors");
 const fs = require("fs");
-
+const dateOptions = {
+	year: "numeric",
+	month: "short",
+	day: "numeric",
+	hour12: false,
+	hour: "2-digit",
+	minute: "2-digit",
+};
 const variables = {
-	vaccinationDate: "06/01/2021",
-	lastUpdatedTime: "30th May 2021 - 1 pm",
+	vaccinationDate: "06/02/2021",
+	lastUpdatedTime: new Date().toLocaleString("en-US", dateOptions),
 	gap: { Covaxin: 28, Covishield: 84, recovery: 84 },
 };
 
@@ -61,7 +68,8 @@ function readAndManipulate(file) {
 		}
 
 		if (
-			parseInt(item.DaysSinceRecovery, 10) === 0 ||
+			item.DaysSinceRecovery.trim() === "" ||
+			item.DaysSinceRecovery.trim() === "0" ||
 			(parseInt(item.DaysSinceRecovery, 10) > 0 &&
 				parseInt(item.DaysSinceRecovery, 10) >= variables.gap.recovery)
 		) {
@@ -91,7 +99,17 @@ function readAndManipulate(file) {
 }
 
 function refresh() {
-	dataList.json = readAndManipulate("data/data.json");
+	dataList.json = readAndManipulate("data/rawData.json");
+
+	let data = JSON.stringify({
+		parameters: {
+			vaccinationDate: variables.vaccinationDate,
+			lastUpdatedTime: variables.lastUpdatedTime,
+		},
+		data: dataList.json,
+	});
+
+	fs.writeFileSync("data/data.json", data);
 }
 
 function returnData() {
@@ -130,6 +148,7 @@ app.get(currDir + "/api/details/:flatnum/", (req, res) => {
 });
 
 refresh();
+
 app.listen(3000, () => {
 	console.log("Server started on port 3000");
 });
