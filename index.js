@@ -53,6 +53,10 @@ async function readAndManipulate(file) {
 			aadharEntered = true;
 		}
 
+		if (item.slot.trim() === "") {
+			item.slot = "Not Scheduled";
+		}
+
 		if (item.Age.trim() === "") {
 			item.Age = "Not Entered";
 		} else {
@@ -96,7 +100,7 @@ async function readAndManipulate(file) {
 			DaysSince1stDose: item["DaysSince1stDose"],
 			Vaccine: item.Vaccine,
 			eligible: eligible ? "Eligible" : "Not Eligible",
-			slot:"Not Scheduled"
+			slot: item.slot,
 		};
 		return obj;
 	});
