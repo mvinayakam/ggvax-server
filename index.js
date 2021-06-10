@@ -4,6 +4,8 @@ const app = express();
 const path = require("path");
 const cors = require("cors");
 const fs = require("fs");
+const csv = require("csvtojson");
+
 const dateOptions = {
 	year: "numeric",
 	month: "short",
@@ -13,7 +15,7 @@ const dateOptions = {
 	minute: "2-digit",
 };
 const variables = {
-	vaccinationDate: "06/02/2021",
+	vaccinationDate: "06/11/2021",
 	lastUpdatedTime: new Date().toLocaleString("en-US", dateOptions),
 	gap: { Covaxin: 28, Covishield: 84, recovery: 84 },
 };
@@ -38,16 +40,17 @@ function readJsonFileSync(filepath, encoding) {
 	return JSON.parse(file);
 }
 
-function readAndManipulate(file) {
-	var filepath = __dirname + "/" + file;
-	let data = readJsonFileSync(filepath);
-
+async function readAndManipulate(file) {
+	const csvFilePath = __dirname + "/" + file + ".csv";
+	const data = await csv().fromFile(csvFilePath);
 	const dataJson = data.map((item) => {
 		let eligible = false;
+		let aadharEntered = false;
 		if (item.Aaadhar.trim() === "") {
 			item.Aaadhar = "Not Entered";
 		} else {
 			item.Aaadhar = "Entered";
+			aadharEntered = true;
 		}
 
 		if (item.Age.trim() === "") {
@@ -68,10 +71,11 @@ function readAndManipulate(file) {
 		}
 
 		if (
-			item.DaysSinceRecovery.trim() === "" ||
-			item.DaysSinceRecovery.trim() === "0" ||
-			(parseInt(item.DaysSinceRecovery, 10) > 0 &&
-				parseInt(item.DaysSinceRecovery, 10) >= variables.gap.recovery)
+			aadharEntered === true &&
+			(item.DaysSinceRecovery.trim() === "" ||
+				item.DaysSinceRecovery.trim() === "0" ||
+				(parseInt(item.DaysSinceRecovery, 10) > 0 &&
+					parseInt(item.DaysSinceRecovery, 10) >= variables.gap.recovery))
 		) {
 			if (item.WhichDose == "2nd") {
 				if (item["DaysSince1stDose"] >= variables.gap[item.Vaccine]) {
@@ -92,15 +96,15 @@ function readAndManipulate(file) {
 			DaysSince1stDose: item["DaysSince1stDose"],
 			Vaccine: item.Vaccine,
 			eligible: eligible ? "Eligible" : "Not Eligible",
+			slot:"Not Scheduled"
 		};
 		return obj;
 	});
 	return dataJson;
 }
 
-function refresh() {
-	dataList.json = readAndManipulate("data/rawData.json");
-
+async function refresh() {
+	dataList.json = await readAndManipulate("data/rawData");
 	let data = JSON.stringify({
 		parameters: {
 			vaccinationDate: variables.vaccinationDate,
@@ -110,6 +114,7 @@ function refresh() {
 	});
 
 	fs.writeFileSync("data/data.json", data);
+	console.log("File Updated");
 }
 
 function returnData() {
@@ -148,7 +153,3 @@ app.get(currDir + "/api/details/:flatnum/", (req, res) => {
 });
 
 refresh();
-
-app.listen(3000, () => {
-	console.log("Server started on port 3000");
-});
