@@ -15,7 +15,7 @@ const dateOptions = {
 	minute: "2-digit",
 };
 const variables = {
-	vaccinationDate: "06/11/2021",
+	vaccinationDate: "07/03/2021",
 	lastUpdatedTime: new Date().toLocaleString("en-US", dateOptions),
 	gap: { Covaxin: 28, Covishield: 84, recovery: 84 },
 };
@@ -75,7 +75,6 @@ async function readAndManipulate(file) {
 		}
 
 		if (
-			aadharEntered === true &&
 			(item.DaysSinceRecovery.trim() === "" ||
 				item.DaysSinceRecovery.trim() === "0" ||
 				(parseInt(item.DaysSinceRecovery, 10) > 0 &&
